@@ -74,8 +74,8 @@ export default function App() {
       const integratedData = data.map((userCar: any) => {
         const staticMeta = Array.isArray(ALL_GTA_VEHICLES) ? ALL_GTA_VEHICLES.find(car => car && car.id === userCar.vehicle_id) : undefined;
         return {
-          ...userCar,
-          ...staticMeta,
+          ...staticMeta, // Base stats
+          ...userCar,    // Overwrites staticMeta.id with the actual Supabase UUID so delete works
           name: staticMeta ? staticMeta.name : (userCar.name || "Custom Vehicle"),
           manufacturer: staticMeta ? staticMeta.manufacturer : (userCar.manufacturer || "Custom"),
           class: staticMeta ? staticMeta.class : (userCar.class || "Custom"),
@@ -146,6 +146,8 @@ export default function App() {
         setSelectedVehicle(null);
         setShowMobileDetail(false);
       }
+    } else {
+      alert("Error: " + error.message);
     }
   };
 
@@ -181,9 +183,10 @@ export default function App() {
 
   const uniqueGarages = Array.from(new Set(vehicles.map(v => v.storage).filter(s => s && s !== "Unassigned"))).sort();
 
-  // 4. IMPORT / EXPORT
+  // 4. IMPORT / EXPORT (Name Based)
   const handleExport = () => {
-    const exportPayload = vehicles.map(v => ({ vehicle_id: v.vehicle_id, storage: v.storage, name: v.name, manufacturer: v.manufacturer }));
+    // Export now only uses Name and Storage
+    const exportPayload = vehicles.map(v => ({ name: v.name, storage: v.storage }));
     const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = `gta_vehicles_${new Date().toISOString().split('T')[0]}.json`;
@@ -193,17 +196,51 @@ export default function App() {
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !session) return;
+    
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
         const json = JSON.parse(event.target?.result as string);
         if (!Array.isArray(json)) throw new Error("File must contain a JSON array.");
-        const newRows = json.map(item => ({ user_id: session.user.id, vehicle_id: item.vehicle_id, storage: item.storage || "Unassigned", name: item.name || 'Imported Vehicle', manufacturer: item.manufacturer || 'Unknown' }));
-        const { error } = await supabase.from('user_vehicles').insert(newRows);
-        if (error) throw error;
-        alert(`Successfully imported ${newRows.length} vehicles.`);
-        fetchUserInventory();
+        
+        const validRows: any[] = [];
+        const failedNames: string[] = [];
+
+        // Match imported names to our database
+        json.forEach((item: any) => {
+          const targetName = item.name ? item.name.toLowerCase().trim() : '';
+          const matchedCar = ALL_GTA_VEHICLES.find(c => c.name.toLowerCase() === targetName);
+
+          if (matchedCar) {
+            validRows.push({
+              user_id: session.user.id,
+              vehicle_id: matchedCar.id,
+              storage: item.storage || "Unassigned",
+              name: matchedCar.name,
+              manufacturer: matchedCar.manufacturer
+            });
+          } else if (item.name) {
+            failedNames.push(item.name);
+          } else {
+            failedNames.push("Unnamed Entry");
+          }
+        });
+
+        if (validRows.length > 0) {
+          const { error } = await supabase.from('user_vehicles').insert(validRows);
+          if (error) throw error;
+          fetchUserInventory();
+        }
+
         setShowImportModal(false);
+
+        // Construct exact user feedback string
+        if (failedNames.length > 0) {
+          alert(`${validRows.length} cars imported, ${failedNames.length} import failed - ${failedNames.join(', ')}, please import them manually.`);
+        } else {
+          alert(`${validRows.length} cars imported successfully.`);
+        }
+
       } catch (err: any) { alert("Import Failed: " + err.message); }
     };
     reader.readAsText(file);
@@ -211,7 +248,7 @@ export default function App() {
   };
 
   const copyTemplate = () => {
-    navigator.clipboard.writeText(`[\n  {\n    "vehicle_id": "6813-buffalo-stx-pursuit",\n    "storage": "Agency Garage"\n  }\n]`);
+    navigator.clipboard.writeText(`[\n  {\n    "name": "Buffalo STX",\n    "storage": "Agency Garage"\n  }\n]`);
     setCopiedTemplate(true); setTimeout(() => setCopiedTemplate(false), 2000);
   };
 
@@ -227,7 +264,6 @@ export default function App() {
   const buttonPrimary = isDarkMode ? "bg-white text-black hover:bg-neutral-200" : "bg-black text-white hover:bg-neutral-800";
   const buttonSecondary = isDarkMode ? "bg-neutral-800 text-white hover:bg-neutral-700" : "bg-white text-black hover:bg-neutral-100";
   
-  // Selection Inversion
   const selectedRowBg = isDarkMode ? "bg-white text-black" : "bg-black text-white";
 
   // RENDERING: GATEWAY
@@ -351,7 +387,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: SIDE PANEL (OVERLAY ON MOBILE, GRID ON DESKTOP) */}
+        {/* RIGHT COLUMN: SIDE PANEL (OVERLAY ON MOBILE) */}
         <div className={`
           ${showMobileDetail && selectedVehicle ? 'fixed inset-0 z-50 flex' : 'hidden lg:flex'}
           lg:static flex-col ${cardBg} border-2 ${borderMain} ${shadowMain} overflow-hidden transition-all duration-300
@@ -359,8 +395,7 @@ export default function App() {
           {selectedVehicle ? (
             <div className="flex-1 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-300 lg:animate-none">
               
-              {/* Mobile Back Button Overlay */}
-              <div className="lg:hidden p-4 border-b-2 border-black flex justify-between items-center bg-black text-white">
+              <div className={`lg:hidden p-4 border-b-2 ${borderMain} flex justify-between items-center ${isDarkMode ? 'bg-neutral-800 text-white' : 'bg-black text-white'}`}>
                 <button onClick={() => setShowMobileDetail(false)} className="flex items-center gap-2 font-bold uppercase text-xs">
                   <ArrowLeft size={16}/> Back to List
                 </button>
@@ -434,7 +469,7 @@ export default function App() {
               <pre className="text-neutral-100">
 {`[
   {
-    "vehicle_id": "6813-buffalo-stx-pursuit",
+    "name": "Buffalo STX",
     "storage": "Agency Garage"
   }
 ]`}
