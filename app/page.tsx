@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { ALL_GTA_VEHICLES, GTAVehicleData } from '@/data/vehicles';
-import { Download, Upload, Plus, Car, Info, Trash2, Search, X, Copy, Check, Moon, Sun, Image as ImageIcon, ImageOff, Edit2, Save, ArrowLeft, Filter, LayoutList, Building2 } from 'lucide-react';
+import { Download, Upload, Plus, Car, Info, Trash2, Search, X, Copy, Check, Moon, Sun, Image as ImageIcon, ImageOff, Edit2, Save, ArrowLeft, Filter, LayoutList, Building2, CheckSquare, Square } from 'lucide-react';
 
 export default function App() {
   // Authentication & Preferences
@@ -30,14 +30,18 @@ export default function App() {
   const [garageLocation, setGarageLocation] = useState('');
   const [showGarageDropdown, setShowGarageDropdown] = useState(false);
 
-  // Edit State & Mobile UX
+  // Edit & Bulk State
   const [isEditing, setIsEditing] = useState(false);
   const [editStorage, setEditStorage] = useState('');
   const [showMobileDetail, setShowMobileDetail] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkStorage, setBulkStorage] = useState('');
+  const [showBulkStorageInput, setShowBulkStorageInput] = useState(false);
 
   // Import/Export States
   const [showImportModal, setShowImportModal] = useState(false);
   const [copiedTemplate, setCopiedTemplate] = useState(false);
+  const [copiedGeminiPrompt, setCopiedGeminiPrompt] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 1. LIFECYCLE & PREFERENCES
@@ -107,6 +111,7 @@ export default function App() {
     await supabase.auth.signOut();
     setSelectedVehicle(null);
     setShowMobileDetail(false);
+    setSelectedIds(new Set());
   };
 
   const saveVehicleToInventory = async (e: React.FormEvent) => {
@@ -148,6 +153,11 @@ export default function App() {
     const { error } = await supabase.from('user_vehicles').delete().eq('id', id);
     if (!error) {
       setVehicles(vehicles.filter(v => v.id !== id));
+      setSelectedIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(id);
+        return newSet;
+      });
       if (selectedVehicle?.id === id) {
         setSelectedVehicle(null);
         setShowMobileDetail(false);
@@ -157,11 +167,46 @@ export default function App() {
     }
   };
 
+  // Bulk Operations
+  const toggleSelection = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation(); // Prevent opening detail view
+    setSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) newSet.delete(id);
+      else newSet.add(id);
+      return newSet;
+    });
+  };
+
+  const handleBulkMove = async () => {
+    if (!session || selectedIds.size === 0) return;
+    const newStorage = bulkStorage.trim() || "Unassigned";
+    
+    // Convert Set to Array for Supabase 'in' query
+    const idsToUpdate = Array.from(selectedIds);
+    
+    const { error } = await supabase
+      .from('user_vehicles')
+      .update({ storage: newStorage })
+      .in('id', idsToUpdate);
+
+    if (!error) {
+      const updatedVehicles = vehicles.map(v => selectedIds.has(v.id) ? { ...v, storage: newStorage } : v);
+      setVehicles(updatedVehicles);
+      setSelectedIds(new Set());
+      setBulkStorage('');
+      setShowBulkStorageInput(false);
+      if (selectedVehicle && selectedIds.has(selectedVehicle.id)) {
+        setSelectedVehicle({ ...selectedVehicle, storage: newStorage });
+      }
+    } else {
+      alert("Bulk Update Error: " + error.message);
+    }
+  };
+
   const resetAddForm = () => { setShowAddForm(false); setSearchQuery(''); setSelectedCarMeta(null); setGarageLocation(''); setShowGarageDropdown(false); };
 
   // 3. FLEET DATA PROCESSING (Fuzzy Search, Filtering, Sorting)
-  
-  // Fuzzy Match Algorithm (matches characters in order, even with gaps)
   const fuzzyMatch = (pattern: string, str: string) => {
     if (!pattern) return true;
     if (!str) return false;
@@ -174,7 +219,6 @@ export default function App() {
     return patternIdx === pattern.length;
   };
 
-  // Extract available filters dynamically from the user's fleet
   const availableClasses = Array.from(new Set(vehicles.map(v => v.class).filter(c => c && c !== "Custom"))).sort();
   const availableDrives = Array.from(new Set(vehicles.map(v => v.driveTrain).filter(d => d && d !== "N/A"))).sort();
 
@@ -186,7 +230,6 @@ export default function App() {
   };
 
   const processedVehicles = useMemo(() => {
-    // 1. Filter
     let filtered = vehicles.filter(v => {
       const matchSearch = fuzzyMatch(inventorySearch, v.name) || fuzzyMatch(inventorySearch, v.manufacturer);
       const matchClass = activeFilters.classes.length === 0 || activeFilters.classes.includes(v.class);
@@ -194,7 +237,6 @@ export default function App() {
       return matchSearch && matchClass && matchDrive;
     });
 
-    // 2. Sort
     if (sortConfig !== null) {
       filtered.sort((a, b) => {
         let aValue = a[sortConfig.key]; let bValue = b[sortConfig.key];
@@ -208,7 +250,6 @@ export default function App() {
     return filtered;
   }, [vehicles, inventorySearch, activeFilters, sortConfig]);
 
-  // Group vehicles for Garage View
   const groupedVehicles = useMemo(() => {
     return processedVehicles.reduce((acc, vehicle) => {
       const garage = vehicle.storage || "Unassigned";
@@ -232,7 +273,7 @@ export default function App() {
 
   const uniqueGarages = Array.from(new Set(vehicles.map(v => v.storage).filter(s => s && s !== "Unassigned"))).sort();
 
-  // 4. IMPORT / EXPORT
+  // 4. IMPORT / EXPORT (With Smart Duplicate Handling)
   const handleExport = () => {
     const exportPayload = vehicles.map(v => ({ name: v.name, storage: v.storage }));
     const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
@@ -252,12 +293,26 @@ export default function App() {
         
         const validRows: any[] = [];
         const failedNames: string[] = [];
+        let duplicatesSkipped = 0;
 
         json.forEach((item: any) => {
           const targetName = item.name ? item.name.toLowerCase().trim() : '';
+          const targetStorage = item.storage || "Unassigned";
+          
           const matchedCar = ALL_GTA_VEHICLES.find(c => c.name.toLowerCase() === targetName);
+          
           if (matchedCar) {
-            validRows.push({ user_id: session.user.id, vehicle_id: matchedCar.id, storage: item.storage || "Unassigned", name: matchedCar.name, manufacturer: matchedCar.manufacturer });
+            // Smart Duplicate Check: Is this exact car already in this exact garage?
+            const isDuplicate = vehicles.some(v => 
+              v.vehicle_id === matchedCar.id && 
+              (v.storage === targetStorage || (!v.storage && targetStorage === "Unassigned"))
+            );
+
+            if (isDuplicate) {
+              duplicatesSkipped++;
+            } else {
+              validRows.push({ user_id: session.user.id, vehicle_id: matchedCar.id, storage: targetStorage, name: matchedCar.name, manufacturer: matchedCar.manufacturer });
+            }
           } else {
             failedNames.push(item.name || "Unnamed Entry");
           }
@@ -269,8 +324,13 @@ export default function App() {
           fetchUserInventory();
         }
         setShowImportModal(false);
-        if (failedNames.length > 0) alert(`${validRows.length} cars imported, ${failedNames.length} import failed - ${failedNames.join(', ')}, please import them manually.`);
-        else alert(`${validRows.length} cars imported successfully.`);
+        
+        // Detailed feedback string
+        let feedback = `${validRows.length} cars imported successfully.\n`;
+        if (duplicatesSkipped > 0) feedback += `${duplicatesSkipped} exact duplicates skipped.\n`;
+        if (failedNames.length > 0) feedback += `${failedNames.length} imports failed (Not in DB): ${failedNames.join(', ')}`;
+        
+        alert(feedback.trim());
       } catch (err: any) { alert("Import Failed: " + err.message); }
     };
     reader.readAsText(file);
@@ -280,6 +340,11 @@ export default function App() {
   const copyTemplate = () => {
     navigator.clipboard.writeText(`[\n  {\n    "name": "Buffalo STX",\n    "storage": "Agency Garage"\n  }\n]`);
     setCopiedTemplate(true); setTimeout(() => setCopiedTemplate(false), 2000);
+  };
+
+  const copyGeminiPrompt = () => {
+    navigator.clipboard.writeText(`List all the cars from the interaction menu video and give it in this exact JSON format:\n[\n  {\n    "name": "Car Name",\n    "storage": "Garage Name"\n  }\n]\nIf there is a mistake in my recording's text recognition, just fix it based on GTA logic.`);
+    setCopiedGeminiPrompt(true); setTimeout(() => setCopiedGeminiPrompt(false), 2000);
   };
 
   // UI Theme Variables
@@ -298,13 +363,15 @@ export default function App() {
 
   // Reusable Vehicle Row Component
   const VehicleRow = ({ v, isSelected }: { v: any, isSelected: boolean }) => (
-    <div onClick={() => { setSelectedVehicle(v); setIsEditing(false); setShowMobileDetail(true); }} className={`grid grid-cols-2 sm:grid-cols-6 gap-2 sm:gap-4 p-3.5 cursor-pointer items-center transition-all ${isSelected ? selectedRowBg : hoverBg}`}>
-      <span className="font-bold truncate col-span-2 sm:col-span-1">{v.name}</span>
+    <div onClick={() => { setSelectedVehicle(v); setIsEditing(false); setShowMobileDetail(true); }} className={`grid grid-cols-[auto_1fr_1fr] sm:grid-cols-[auto_2fr_2fr_1fr_1fr_1fr] gap-3 sm:gap-4 p-3.5 cursor-pointer items-center transition-all ${isSelected ? selectedRowBg : hoverBg}`}>
+      <button onClick={(e) => toggleSelection(e, v.id)} className={`transition-colors ${selectedIds.has(v.id) ? (isDarkMode ? 'text-black' : 'text-white') : textMuted}`}>
+        {selectedIds.has(v.id) ? <CheckSquare size={16} /> : <Square size={16} />}
+      </button>
+      <span className="font-bold truncate">{v.name}</span>
       <span className={`truncate text-xs sm:text-sm ${isSelected ? 'opacity-80' : textMuted}`}>{v.storage}</span>
-      <span className={`truncate text-xs sm:text-sm ${isSelected ? 'opacity-80' : textMuted}`}>{v.class}</span>
+      <span className={`truncate text-xs sm:text-sm hidden sm:block ${isSelected ? 'opacity-80' : textMuted}`}>{v.class}</span>
       <span className="truncate text-xs sm:text-sm hidden sm:block">{v.maxSpeed}</span>
       <span className="truncate text-xs sm:text-sm hidden sm:block">{v.cost > 0 ? `$${(v.cost / 1000).toLocaleString()}k` : 'Free'}</span>
-      <span className={`truncate text-xs sm:text-sm hidden sm:block ${isSelected ? 'opacity-80' : textMuted}`}>{v.driveTrain}</span>
     </div>
   );
 
@@ -358,7 +425,7 @@ export default function App() {
               <h2 className="font-bold uppercase text-sm tracking-wide shrink-0">Fleet ({processedVehicles.length})</h2>
               
               <div className="flex flex-1 w-full gap-2 justify-end">
-                <div className="relative w-full max-w-xs">
+                <div className="relative w-full max-w-xs hidden sm:block">
                   <Search size={14} className={`absolute left-3 top-2.5 ${textMuted}`} />
                   <input type="text" placeholder="Fuzzy Search..." value={inventorySearch} onChange={(e) => setInventorySearch(e.target.value)} className={`w-full ${cardBg} ${textMain} border-2 ${borderMain} py-1.5 pl-8 pr-3 text-sm font-medium outline-none transition-colors rounded`} />
                 </div>
@@ -381,6 +448,10 @@ export default function App() {
             {/* EXPANDABLE FILTER PANEL */}
             {showFilters && (
               <div className={`pt-4 mt-2 border-t border-dashed ${borderMain} animate-in slide-in-from-top-2 flex flex-col gap-4`}>
+                <div className="sm:hidden relative w-full mb-2">
+                  <Search size={14} className={`absolute left-3 top-2.5 ${textMuted}`} />
+                  <input type="text" placeholder="Fuzzy Search..." value={inventorySearch} onChange={(e) => setInventorySearch(e.target.value)} className={`w-full ${cardBg} ${textMain} border-2 ${borderMain} py-1.5 pl-8 pr-3 text-sm font-medium outline-none transition-colors rounded`} />
+                </div>
                 <div>
                   <p className={`text-xs font-bold uppercase tracking-wide ${textMuted} mb-2`}>Vehicle Class</p>
                   <div className="flex flex-wrap gap-2">
@@ -407,6 +478,28 @@ export default function App() {
           </div>
 
           <div className="flex-1 overflow-x-auto p-0 relative">
+            
+            {/* BULK ACTIONS BAR */}
+            {selectedIds.size > 0 && (
+               <div className={`absolute top-0 left-0 w-full z-30 p-3 border-b-2 ${borderMain} animate-in slide-in-from-top-2 flex justify-between items-center ${isDarkMode ? 'bg-blue-900 text-white' : 'bg-blue-600 text-white'}`}>
+                 <span className="font-bold text-sm">{selectedIds.size} Selected</span>
+                 <div className="flex gap-2">
+                   {showBulkStorageInput ? (
+                     <div className="flex gap-2">
+                       <input type="text" placeholder="New Garage..." value={bulkStorage} onChange={(e) => setBulkStorage(e.target.value)} className="px-2 py-1 text-black text-sm rounded outline-none" />
+                       <button onClick={handleBulkMove} className="px-3 py-1 bg-black text-white font-bold text-xs uppercase rounded hover:bg-neutral-800">Move</button>
+                       <button onClick={() => setShowBulkStorageInput(false)} className="px-2 py-1 hover:opacity-70"><X size={16}/></button>
+                     </div>
+                   ) : (
+                     <>
+                       <button onClick={() => setShowBulkStorageInput(true)} className="px-3 py-1.5 bg-black/20 hover:bg-black/40 font-bold text-xs uppercase rounded transition-colors flex items-center gap-1.5"><Building2 size={14}/> Move Selected</button>
+                       <button onClick={() => setSelectedIds(new Set())} className="px-3 py-1.5 hover:bg-black/20 font-bold text-xs uppercase rounded transition-colors">Deselect</button>
+                     </>
+                   )}
+                 </div>
+               </div>
+            )}
+
             {showAddForm && (
               <form onSubmit={saveVehicleToInventory} className={`absolute inset-0 z-20 ${baseBg} p-4 sm:p-6 border-b-2 ${borderMain} animate-in slide-in-from-top-4 duration-300 overflow-y-auto`}>
                 <h3 className={`text-lg font-bold uppercase mb-4 border-b-2 ${borderMain} pb-2`}>Register New Vehicle</h3>
@@ -449,14 +542,14 @@ export default function App() {
 
             {viewMode === 'list' ? (
               /* LIST VIEW */
-              <div className="w-full text-left min-w-[600px]">
-                <div className={`grid grid-cols-6 gap-4 p-3.5 border-b-2 ${borderMain} font-bold text-xs uppercase tracking-wide ${baseBg} select-none ${textMuted} sticky top-0 z-10`}>
+              <div className="w-full text-left min-w-[600px] mt-10 sm:mt-0">
+                <div className={`grid grid-cols-[auto_1fr_1fr] sm:grid-cols-[auto_2fr_2fr_1fr_1fr_1fr] gap-3 sm:gap-4 p-3.5 border-b-2 ${borderMain} font-bold text-xs uppercase tracking-wide ${baseBg} select-none ${textMuted} sticky top-0 z-10`}>
+                  <div className="w-4"></div>
                   <span className={`cursor-pointer ${hoverBg} transition-colors flex items-center gap-1`} onClick={() => requestSort('name')}>Vehicle {sortConfig?.key === 'name' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</span>
                   <span className={`cursor-pointer ${hoverBg} transition-colors flex items-center gap-1`} onClick={() => requestSort('storage')}>Location {sortConfig?.key === 'storage' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</span>
-                  <span className={`cursor-pointer ${hoverBg} transition-colors flex items-center gap-1`} onClick={() => requestSort('class')}>Class {sortConfig?.key === 'class' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</span>
+                  <span className={`cursor-pointer ${hoverBg} transition-colors flex items-center gap-1 hidden sm:flex`} onClick={() => requestSort('class')}>Class {sortConfig?.key === 'class' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</span>
                   <span className={`cursor-pointer ${hoverBg} transition-colors flex items-center gap-1 hidden sm:flex`} onClick={() => requestSort('maxSpeed')}>Top Speed {sortConfig?.key === 'maxSpeed' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</span>
                   <span className={`cursor-pointer ${hoverBg} transition-colors flex items-center gap-1 hidden sm:flex`} onClick={() => requestSort('cost')}>Value {sortConfig?.key === 'cost' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</span>
-                  <span className={`cursor-pointer ${hoverBg} transition-colors flex items-center gap-1 hidden sm:flex`} onClick={() => requestSort('driveTrain')}>Drive {sortConfig?.key === 'driveTrain' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</span>
                 </div>
                 <div className={`divide-y-2 ${isDarkMode ? 'divide-neutral-800' : 'divide-neutral-200'}`}>
                   {processedVehicles.length > 0 ? processedVehicles.map(v => (
@@ -468,7 +561,7 @@ export default function App() {
               </div>
             ) : (
               /* GARAGE GROUPED VIEW */
-              <div className="p-4 flex flex-col gap-6 bg-[#f4f4f0] dark:bg-neutral-950 min-h-full">
+              <div className="p-4 flex flex-col gap-6 bg-[#f4f4f0] dark:bg-neutral-950 min-h-full mt-10 sm:mt-0">
                 {Object.keys(groupedVehicles).length > 0 ? Object.entries(groupedVehicles).sort(([a], [b]) => a.localeCompare(b)).map(([garage, cars]) => (
                   <div key={garage} className={`${cardBg} border-2 ${borderMain} ${shadowSmall} rounded overflow-hidden`}>
                     <div className={`px-4 py-3 border-b-2 ${borderMain} ${isDarkMode ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-black'} font-black uppercase text-sm tracking-wide flex justify-between items-center`}>
@@ -557,29 +650,57 @@ export default function App() {
       {/* IMPORT MODAL */}
       {showImportModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className={`${cardBg} border-2 ${borderMain} rounded p-6 sm:p-8 w-full max-w-lg ${shadowMain} relative animate-in zoom-in-95 duration-200`}>
+          <div className={`${cardBg} border-2 ${borderMain} rounded p-6 sm:p-8 w-full max-w-2xl ${shadowMain} relative animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto`}>
             <button onClick={() => setShowImportModal(false)} className={`absolute top-4 right-4 p-1.5 rounded ${hoverBg} transition-colors ${textMuted} hover:${textMain}`}><X size={18} /></button>
             <h2 className="text-xl font-bold uppercase tracking-wide mb-1">Import Vehicles</h2>
-            <p className={`text-sm mb-6 ${textMuted}`}>Upload a JSON file. Ensure the keys match the template.</p>
+            <p className={`text-sm mb-6 ${textMuted}`}>Upload a JSON file containing your fleet data.</p>
             
-            <div className={`bg-neutral-900 p-4 rounded font-mono text-xs overflow-x-auto relative mb-6 border-2 ${isDarkMode ? 'border-neutral-700' : 'border-black'}`}>
-              <button onClick={copyTemplate} className="absolute top-2 right-2 p-1.5 rounded bg-white text-black hover:bg-neutral-300 flex items-center gap-1.5 transition-colors font-sans text-[10px] font-bold uppercase">
-                {copiedTemplate ? <><Check size={12}/> Copied</> : <><Copy size={12}/> Copy</>}
-              </button>
-              <pre className="text-neutral-100">
+            {/* MANUAL IMPORT SECTION */}
+            <div className="mb-8">
+              <h3 className={`text-xs font-bold uppercase tracking-wide ${textMuted} mb-2`}>Manual JSON Format</h3>
+              <div className={`bg-neutral-900 p-4 rounded font-mono text-xs overflow-x-auto relative border-2 ${isDarkMode ? 'border-neutral-700' : 'border-black'}`}>
+                <button onClick={copyTemplate} className="absolute top-2 right-2 p-1.5 rounded bg-white text-black hover:bg-neutral-300 flex items-center gap-1.5 transition-colors font-sans text-[10px] font-bold uppercase">
+                  {copiedTemplate ? <><Check size={12}/> Copied</> : <><Copy size={12}/> Copy</>}
+                </button>
+                <pre className="text-neutral-100">
 {`[
   {
     "name": "Buffalo STX",
     "storage": "Agency Garage"
   }
 ]`}
-              </pre>
+                </pre>
+              </div>
             </div>
 
-            <div className="flex justify-end gap-3">
+            {/* AI AUTOMATION SECTION */}
+            <div className={`p-4 border-2 ${borderMain} rounded mb-6 ${isDarkMode ? 'bg-blue-900/10' : 'bg-blue-50'}`}>
+              <h3 className="text-sm font-bold uppercase tracking-wide mb-2 flex items-center gap-2">
+                <span className="bg-blue-600 text-white px-1.5 py-0.5 rounded text-[10px]">NEW</span> AI Auto-Import
+              </h3>
+              <p className={`text-xs mb-4 ${textMuted}`}>
+                To easily import all your cars at once: record your screen, open the Interaction Menu {'>'} Manage Vehicles {'>'} Vehicle Organization, and scroll through your garages. 
+                Upload the video to Gemini and use this prompt. <a href="#" className="text-blue-500 hover:underline font-semibold">Click here to see a video demonstration.</a>
+              </p>
+              
+              <div className={`bg-neutral-900 p-4 rounded font-mono text-xs relative border-2 ${isDarkMode ? 'border-neutral-700' : 'border-black'}`}>
+                <button onClick={copyGeminiPrompt} className="absolute top-2 right-2 p-1.5 rounded bg-white text-black hover:bg-neutral-300 flex items-center gap-1.5 transition-colors font-sans text-[10px] font-bold uppercase">
+                  {copiedGeminiPrompt ? <><Check size={12}/> Copied</> : <><Copy size={12}/> Copy</>}
+                </button>
+                <p className="text-neutral-100 whitespace-pre-wrap pr-16 leading-relaxed">
+                  List all the cars from the interaction menu video and give it in this exact JSON format:
+                  <br/><br/>
+                  {`[\n  {\n    "name": "Car Name",\n    "storage": "Garage Name"\n  }\n]`}
+                  <br/><br/>
+                  If there is a mistake in my recording's text recognition, just fix it based on GTA logic.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t-2 border-dashed border-neutral-300 dark:border-neutral-700">
                <input type="file" accept=".json" id="json-upload" className="hidden" ref={fileInputRef} onChange={handleImport} />
                <label htmlFor="json-upload" className={`cursor-pointer px-5 py-2.5 ${buttonPrimary} border-2 ${borderMain} rounded font-bold text-sm uppercase tracking-wide transition-all ${shadowSmall} hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none text-center w-full sm:w-auto`}>
-                 Select JSON File
+                 Select JSON File to Upload
                </label>
             </div>
           </div>
