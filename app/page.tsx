@@ -344,33 +344,41 @@ export default function App() {
     setCopiedGeminiPrompt(true); setTimeout(() => setCopiedGeminiPrompt(false), 2000);
   };
 
-  // UI Theme Variables
+  // UI Theme Variables (Spicy Dark Mode adjustments)
   const baseBg = isDarkMode ? "bg-neutral-950" : "bg-[#f4f4f0]";
   const cardBg = isDarkMode ? "bg-neutral-900" : "bg-white";
   const textMain = isDarkMode ? "text-neutral-100" : "text-black";
   const textMuted = isDarkMode ? "text-neutral-400" : "text-black/60";
   const borderMain = isDarkMode ? "border-neutral-700" : "border-black";
   const hoverBg = isDarkMode ? "hover:bg-neutral-800" : "hover:bg-[#e5e5e5]";
-  const shadowMain = isDarkMode ? "shadow-[6px_6px_0_0_#262626]" : "shadow-[6px_6px_0_0_#000000]";
-  const shadowSmall = isDarkMode ? "shadow-[3px_3px_0_0_#262626]" : "shadow-[3px_3px_0_0_#000000]";
-  const buttonPrimary = isDarkMode ? "bg-white text-black hover:bg-neutral-200" : "bg-black text-white hover:bg-neutral-800";
-  const buttonSecondary = isDarkMode ? "bg-neutral-800 text-white hover:bg-neutral-700" : "bg-white text-black hover:bg-neutral-100";
+  const shadowMain = isDarkMode ? "shadow-[6px_6px_0_0_#000000]" : "shadow-[6px_6px_0_0_#000000]";
+  const shadowSmall = isDarkMode ? "shadow-[3px_3px_0_0_#000000]" : "shadow-[3px_3px_0_0_#000000]";
   
-  const selectedRowBg = isDarkMode ? "bg-white text-black" : "bg-black text-white";
+  // Indigo Accent for Dark Mode
+  const buttonPrimary = isDarkMode ? "bg-indigo-600 text-white hover:bg-indigo-500 border-indigo-600 hover:border-indigo-500" : "bg-black text-white hover:bg-neutral-800 border-black";
+  const buttonSecondary = isDarkMode ? "bg-neutral-800 text-white hover:bg-neutral-700" : "bg-white text-black hover:bg-neutral-100";
+  const selectedRowBg = isDarkMode ? "bg-neutral-800 shadow-[inset_4px_0_0_0_#4f46e5]" : "bg-neutral-100 shadow-[inset_4px_0_0_0_#000000]";
+  const bulkBarBg = isDarkMode ? "bg-indigo-600 text-white border-b-0" : "bg-black text-white border-black";
 
   // Reusable Vehicle Row Component
-  const VehicleRow = ({ v, isSelected }: { v: any, isSelected: boolean }) => (
-    <div onClick={() => { setSelectedVehicle(v); setIsEditing(false); setShowMobileDetail(true); }} className={`grid grid-cols-[auto_1fr_1fr] sm:grid-cols-[auto_2fr_2fr_1fr_1fr_1fr] gap-3 sm:gap-4 p-3.5 cursor-pointer items-center transition-all ${isSelected ? selectedRowBg : hoverBg}`}>
-      <button onClick={(e) => toggleSelection(e, v.id)} className={`transition-colors ${selectedIds.has(v.id) ? (isDarkMode ? 'text-black' : 'text-white') : textMuted}`}>
-        {selectedIds.has(v.id) ? <CheckSquare size={16} /> : <Square size={16} />}
-      </button>
-      <span className="font-bold truncate">{v.name}</span>
-      <span className={`truncate text-xs sm:text-sm ${isSelected ? 'opacity-80' : textMuted}`}>{v.storage}</span>
-      <span className={`truncate text-xs sm:text-sm hidden sm:block ${isSelected ? 'opacity-80' : textMuted}`}>{v.class}</span>
-      <span className="truncate text-xs sm:text-sm hidden sm:block">{v.maxSpeed}</span>
-      <span className="truncate text-xs sm:text-sm hidden sm:block">{v.cost > 0 ? `$${(v.cost / 1000).toLocaleString()}k` : 'Free'}</span>
-    </div>
-  );
+  const VehicleRow = ({ v, isSelected }: { v: any, isSelected: boolean }) => {
+    const isChecked = selectedIds.has(v.id);
+    return (
+      <div onClick={() => { setSelectedVehicle(v); setIsEditing(false); setShowMobileDetail(true); }} className={`group grid grid-cols-[auto_1fr_1fr] sm:grid-cols-[auto_2fr_2fr_1fr_1fr_1fr] gap-3 sm:gap-4 p-3.5 cursor-pointer items-center transition-all ${isSelected ? selectedRowBg : hoverBg}`}>
+        <button 
+          onClick={(e) => toggleSelection(e, v.id)} 
+          className={`transition-all duration-200 transform hover:scale-110 active:scale-90 ${isChecked ? (isDarkMode ? 'text-indigo-400 opacity-100' : 'text-black opacity-100') : 'text-neutral-400 opacity-0 group-hover:opacity-100 hover:text-neutral-300'}`}
+        >
+          {isChecked ? <CheckSquare size={18} className="fill-current text-current" /> : <Square size={18} />}
+        </button>
+        <span className={`font-bold truncate ${isSelected && isDarkMode ? 'text-indigo-100' : ''}`}>{v.name}</span>
+        <span className={`truncate text-xs sm:text-sm ${isSelected ? 'opacity-80' : textMuted}`}>{v.storage}</span>
+        <span className={`truncate text-xs sm:text-sm hidden sm:block ${isSelected ? 'opacity-80' : textMuted}`}>{v.class}</span>
+        <span className="truncate text-xs sm:text-sm hidden sm:block">{v.maxSpeed}</span>
+        <span className="truncate text-xs sm:text-sm hidden sm:block">{v.cost > 0 ? `$${(v.cost / 1000).toLocaleString()}k` : 'Free'}</span>
+      </div>
+    );
+  };
 
   // RENDERING: GATEWAY
   if (!session) {
@@ -379,7 +387,7 @@ export default function App() {
         <div className={`w-full max-w-md ${cardBg} border-2 ${borderMain} p-8 ${shadowMain} animate-in fade-in zoom-in duration-500`}>
           <h1 className={`text-3xl font-black uppercase tracking-tight ${textMain} mb-2`}>Vehicle Tracker</h1>
           <p className={`text-sm font-semibold ${textMuted} mb-8 border-b-2 ${borderMain} pb-4`}>Sign in to manage your collection</p>
-          <button onClick={handleGoogleLogin} disabled={loadingAuth} className={`w-full ${buttonPrimary} border-2 ${borderMain} py-3.5 font-bold uppercase tracking-wide text-sm transition-all flex items-center justify-center gap-3 ${shadowSmall} hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none`}>
+          <button onClick={handleGoogleLogin} disabled={loadingAuth} className={`w-full ${buttonPrimary} border-2 py-3.5 font-bold uppercase tracking-wide text-sm transition-all flex items-center justify-center gap-3 ${shadowSmall} hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none`}>
              <svg className="w-5 h-5" viewBox="0 0 24 24"><path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
              {loadingAuth ? "Signing In..." : "Continue with Google"}
           </button>
@@ -392,7 +400,7 @@ export default function App() {
   return (
     <div className={`min-h-screen ${baseBg} ${textMain} font-sans flex flex-col transition-colors duration-300`}>
       {/* HEADER */}
-      <header className={`flex flex-col sm:flex-row justify-between items-center p-4 sm:p-5 ${cardBg} border-b-2 ${borderMain} z-20 relative`}>
+      <header className={`flex flex-col sm:flex-row justify-between items-center p-4 sm:p-5 ${cardBg} border-b-2 ${borderMain} z-40 relative`}>
         <h1 className="text-xl sm:text-2xl font-black uppercase tracking-tight flex items-center gap-2 mb-4 sm:mb-0">
           <Car className={textMain} size={24} /> GTA Tracker
         </h1>
@@ -411,11 +419,33 @@ export default function App() {
         </div>
       </header>
 
-      <main className="flex-1 p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-[1600px] mx-auto w-full animate-in fade-in duration-500 relative">
+      {/* Adding items-start to allow the right side to be sticky without stretching */}
+      <main className="flex-1 p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-[1600px] mx-auto w-full animate-in fade-in duration-500 relative items-start">
         
         {/* LEFT COLUMN: DATATABLE & CONTROLS */}
-        <div className={`lg:col-span-2 flex flex-col ${cardBg} border-2 ${borderMain} ${shadowMain}`}>
+        <div className={`lg:col-span-2 flex flex-col ${cardBg} border-2 ${borderMain} ${shadowMain} relative`}>
           
+          {/* BULK ACTIONS BAR (Sticky inside left column) */}
+          {selectedIds.size > 0 && (
+            <div className={`sticky top-0 w-full z-30 p-3 animate-in slide-in-from-top-2 flex justify-between items-center ${bulkBarBg}`}>
+              <span className="font-bold text-sm">{selectedIds.size} Selected</span>
+              <div className="flex gap-2">
+                {showBulkStorageInput ? (
+                  <div className="flex gap-2">
+                    <input type="text" placeholder="New Garage..." value={bulkStorage} onChange={(e) => setBulkStorage(e.target.value)} className="px-2 py-1 text-black text-sm rounded outline-none w-32 sm:w-auto" />
+                    <button onClick={handleBulkMove} className="px-3 py-1 bg-white text-black font-bold text-xs uppercase rounded hover:bg-neutral-200">Move</button>
+                    <button onClick={() => setShowBulkStorageInput(false)} className="px-2 py-1 hover:opacity-70"><X size={16}/></button>
+                  </div>
+                ) : (
+                  <>
+                    <button onClick={() => setShowBulkStorageInput(true)} className="px-3 py-1.5 bg-white/20 hover:bg-white/30 font-bold text-xs uppercase rounded transition-colors flex items-center gap-1.5"><Building2 size={14}/> Move Selected</button>
+                    <button onClick={() => setSelectedIds(new Set())} className="px-3 py-1.5 hover:bg-white/20 font-bold text-xs uppercase rounded transition-colors">Deselect</button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* CONTROL TOOLBAR */}
           <div className={`p-4 border-b-2 ${borderMain} flex flex-col gap-4 ${isDarkMode ? 'bg-neutral-800/50' : 'bg-neutral-100/50'}`}>
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
@@ -436,7 +466,7 @@ export default function App() {
                 <button onClick={() => setShowFilters(!showFilters)} className={`p-1.5 px-3 border-2 ${borderMain} rounded flex items-center gap-2 font-bold text-xs uppercase transition-colors ${showFilters || activeFilters.classes.length > 0 || activeFilters.drives.length > 0 ? selectedRowBg : cardBg + ' ' + hoverBg}`}>
                   <Filter size={14} /> <span className="hidden sm:inline">Filters</span>
                 </button>
-                <button onClick={() => setShowAddForm(!showAddForm)} className={`p-1.5 px-3 ${buttonPrimary} border-2 ${borderMain} rounded font-bold text-xs uppercase transition-colors flex items-center gap-2 shrink-0`}>
+                <button onClick={() => setShowAddForm(!showAddForm)} className={`p-1.5 px-3 ${buttonPrimary} border-2 rounded font-bold text-xs uppercase transition-colors flex items-center gap-2 shrink-0`}>
                   {showAddForm ? <X size={14}/> : <Plus size={14} />} <span className="hidden sm:inline">{showAddForm ? 'Cancel' : 'Add'}</span>
                 </button>
               </div>
@@ -475,27 +505,6 @@ export default function App() {
           </div>
 
           <div className="flex-1 overflow-x-auto p-0 relative">
-            
-            {/* BULK ACTIONS BAR */}
-            {selectedIds.size > 0 && (
-               <div className={`absolute top-0 left-0 w-full z-30 p-3 border-b-2 ${borderMain} animate-in slide-in-from-top-2 flex justify-between items-center ${isDarkMode ? 'bg-blue-900 text-white' : 'bg-blue-600 text-white'}`}>
-                 <span className="font-bold text-sm">{selectedIds.size} Selected</span>
-                 <div className="flex gap-2">
-                   {showBulkStorageInput ? (
-                     <div className="flex gap-2">
-                       <input type="text" placeholder="New Garage..." value={bulkStorage} onChange={(e) => setBulkStorage(e.target.value)} className="px-2 py-1 text-black text-sm rounded outline-none" />
-                       <button onClick={handleBulkMove} className="px-3 py-1 bg-black text-white font-bold text-xs uppercase rounded hover:bg-neutral-800">Move</button>
-                       <button onClick={() => setShowBulkStorageInput(false)} className="px-2 py-1 hover:opacity-70"><X size={16}/></button>
-                     </div>
-                   ) : (
-                     <>
-                       <button onClick={() => setShowBulkStorageInput(true)} className="px-3 py-1.5 bg-black/20 hover:bg-black/40 font-bold text-xs uppercase rounded transition-colors flex items-center gap-1.5"><Building2 size={14}/> Move Selected</button>
-                       <button onClick={() => setSelectedIds(new Set())} className="px-3 py-1.5 hover:bg-black/20 font-bold text-xs uppercase rounded transition-colors">Deselect</button>
-                     </>
-                   )}
-                 </div>
-               </div>
-            )}
 
             {showAddForm && (
               <form onSubmit={saveVehicleToInventory} className={`absolute inset-0 z-20 ${baseBg} p-4 sm:p-6 border-b-2 ${borderMain} animate-in slide-in-from-top-4 duration-300 overflow-y-auto`}>
@@ -532,14 +541,14 @@ export default function App() {
                 </div>
                 <div className="flex flex-col sm:flex-row justify-end gap-3 mt-6">
                   <button type="button" onClick={resetAddForm} className={`px-5 py-2.5 font-bold text-xs uppercase tracking-wide ${buttonSecondary} border-2 ${borderMain} rounded w-full sm:w-auto`}>Cancel</button>
-                  <button type="submit" disabled={!searchQuery.trim()} className={`px-5 py-2.5 ${buttonPrimary} border-2 ${borderMain} rounded font-bold text-xs uppercase tracking-wide transition-all ${shadowSmall} hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none w-full sm:w-auto disabled:opacity-50`}>Save Vehicle</button>
+                  <button type="submit" disabled={!searchQuery.trim()} className={`px-5 py-2.5 ${buttonPrimary} border-2 rounded font-bold text-xs uppercase tracking-wide transition-all ${shadowSmall} hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none w-full sm:w-auto disabled:opacity-50`}>Save Vehicle</button>
                 </div>
               </form>
             )}
 
             {viewMode === 'list' ? (
               /* LIST VIEW */
-              <div className="w-full text-left min-w-[600px] mt-10 sm:mt-0">
+              <div className="w-full text-left min-w-[600px]">
                 <div className={`grid grid-cols-[auto_1fr_1fr] sm:grid-cols-[auto_2fr_2fr_1fr_1fr_1fr] gap-3 sm:gap-4 p-3.5 border-b-2 ${borderMain} font-bold text-xs uppercase tracking-wide ${baseBg} select-none ${textMuted} sticky top-0 z-10`}>
                   <div className="w-4"></div>
                   <span className={`cursor-pointer ${hoverBg} transition-colors flex items-center gap-1`} onClick={() => requestSort('name')}>Vehicle {sortConfig?.key === 'name' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</span>
@@ -558,22 +567,18 @@ export default function App() {
               </div>
             ) : (
               /* GARAGE GROUPED VIEW */
-              <div className="p-4 flex flex-col gap-6 bg-[#f4f4f0] dark:bg-neutral-950 min-h-full mt-10 sm:mt-0">
-                {Object.keys(groupedVehicles).length > 0 ? Object.entries(groupedVehicles).sort(([a], [b]) => a.localeCompare(b)).map((entry) => {
-                  const garage = entry[0];
-                  const cars = entry[1] as any[];
-                  return (
-                    <div key={garage} className={`${cardBg} border-2 ${borderMain} ${shadowSmall} rounded overflow-hidden`}>
-                      <div className={`px-4 py-3 border-b-2 ${borderMain} ${isDarkMode ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-black'} font-black uppercase text-sm tracking-wide flex justify-between items-center`}>
-                        <span className="flex items-center gap-2"><Building2 size={16}/> {garage}</span>
-                        <span className="bg-black text-white dark:bg-white dark:text-black px-2 py-0.5 rounded text-xs">{cars.length}</span>
-                      </div>
-                      <div className={`divide-y-2 ${isDarkMode ? 'divide-neutral-800' : 'divide-neutral-100'} min-w-[600px]`}>
-                         {cars.map(v => <VehicleRow key={v.id} v={v} isSelected={selectedVehicle?.id === v.id} />)}
-                      </div>
+              <div className="p-4 flex flex-col gap-6 bg-[#f4f4f0] dark:bg-neutral-950 min-h-full">
+                {Object.keys(groupedVehicles).length > 0 ? Object.entries(groupedVehicles).sort(([a], [b]) => a.localeCompare(b)).map(([garage, cars]: [string, any[]]) => (
+                  <div key={garage} className={`${cardBg} border-2 ${borderMain} ${shadowSmall} rounded overflow-hidden`}>
+                    <div className={`px-4 py-3 border-b-2 ${borderMain} ${isDarkMode ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-black'} font-black uppercase text-sm tracking-wide flex justify-between items-center`}>
+                      <span className="flex items-center gap-2"><Building2 size={16}/> {garage}</span>
+                      <span className="bg-black text-white dark:bg-white dark:text-black px-2 py-0.5 rounded text-xs">{cars.length}</span>
                     </div>
-                  );
-                }) : (
+                    <div className={`divide-y-2 ${isDarkMode ? 'divide-neutral-800' : 'divide-neutral-100'} min-w-[600px]`}>
+                       {cars.map(v => <VehicleRow key={v.id} v={v} isSelected={selectedVehicle?.id === v.id} />)}
+                    </div>
+                  </div>
+                )) : (
                   <div className="p-8 text-center text-sm font-bold uppercase tracking-widest opacity-50 w-full col-span-full">No vehicles match current filters.</div>
                 )}
               </div>
@@ -581,10 +586,11 @@ export default function App() {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: SIDE PANEL (OVERLAY ON MOBILE) */}
+        {/* RIGHT COLUMN: SIDE PANEL (OVERLAY ON MOBILE, STICKY ON DESKTOP) */}
         <div className={`
           ${showMobileDetail && selectedVehicle ? 'fixed inset-0 z-50 flex' : 'hidden lg:flex'}
-          lg:static flex-col ${cardBg} border-2 ${borderMain} ${shadowMain} overflow-hidden transition-all duration-300
+          lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)]
+          flex-col ${cardBg} border-2 ${borderMain} ${shadowMain} overflow-hidden transition-all duration-300
         `}>
           {selectedVehicle ? (
             <div className="flex-1 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-300 lg:animate-none">
@@ -622,7 +628,7 @@ export default function App() {
                       <span className={`text-xs font-bold uppercase ${textMuted}`}>Update Location</span>
                       <input type="text" value={editStorage} onChange={(e) => setEditStorage(e.target.value)} placeholder="New Garage Name..." className={`w-full ${baseBg} ${textMain} border-2 ${borderMain} rounded p-2 text-sm outline-none`} />
                     </label>
-                    <button onClick={updateVehicleDetails} className={`py-2 flex items-center justify-center gap-2 ${buttonPrimary} rounded text-sm font-bold border-2 ${borderMain} transition-all`}><Save size={14}/> Save Changes</button>
+                    <button onClick={updateVehicleDetails} className={`py-2 flex items-center justify-center gap-2 ${buttonPrimary} border-2 rounded text-sm font-bold transition-all`}><Save size={14}/> Save Changes</button>
                   </div>
                 ) : (
                   <div className="flex flex-col gap-2 text-sm">
@@ -675,13 +681,13 @@ export default function App() {
             </div>
 
             {/* AI AUTOMATION SECTION */}
-            <div className={`p-4 border-2 ${borderMain} rounded mb-6 ${isDarkMode ? 'bg-blue-900/10' : 'bg-blue-50'}`}>
+            <div className={`p-4 border-2 ${isDarkMode ? 'border-indigo-700 bg-indigo-900/20' : 'border-blue-600 bg-blue-50'} rounded mb-6`}>
               <h3 className="text-sm font-bold uppercase tracking-wide mb-2 flex items-center gap-2">
-                <span className="bg-blue-600 text-white px-1.5 py-0.5 rounded text-[10px]">NEW</span> AI Auto-Import
+                <span className={`${isDarkMode ? 'bg-indigo-600' : 'bg-blue-600'} text-white px-1.5 py-0.5 rounded text-[10px]`}>NEW</span> AI Auto-Import
               </h3>
               <p className={`text-xs mb-4 ${textMuted}`}>
                 To easily import all your cars at once: record your screen, open the Interaction Menu {'>'} Manage Vehicles {'>'} Vehicle Organization, and scroll through your garages. 
-                Upload the video to Gemini and use this prompt. <a href="#" className="text-blue-500 hover:underline font-semibold">Click here to see a video demonstration.</a>
+                Upload the video to Gemini and use this prompt. <a href="#" className={`${isDarkMode ? 'text-indigo-400' : 'text-blue-500'} hover:underline font-semibold`}>Click here to see a video demonstration.</a>
               </p>
               
               <div className={`bg-neutral-900 p-4 rounded font-mono text-xs relative border-2 ${isDarkMode ? 'border-neutral-700' : 'border-black'}`}>
@@ -700,7 +706,7 @@ export default function App() {
 
             <div className="flex justify-end gap-3 pt-4 border-t-2 border-dashed border-neutral-300 dark:border-neutral-700">
                <input type="file" accept=".json" id="json-upload" className="hidden" ref={fileInputRef} onChange={handleImport} />
-               <label htmlFor="json-upload" className={`cursor-pointer px-5 py-2.5 ${buttonPrimary} border-2 ${borderMain} rounded font-bold text-sm uppercase tracking-wide transition-all ${shadowSmall} hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none text-center w-full sm:w-auto`}>
+               <label htmlFor="json-upload" className={`cursor-pointer px-5 py-2.5 ${buttonPrimary} border-2 rounded font-bold text-sm uppercase tracking-wide transition-all ${shadowSmall} hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none text-center w-full sm:w-auto`}>
                  Select JSON File to Upload
                </label>
             </div>
@@ -712,7 +718,7 @@ export default function App() {
 }
 
 function DetailRow({ label, value, isDark, highlight = false }: { label: string, value: any, isDark: boolean, highlight?: boolean }) {
-  const highlightClass = highlight ? (isDark ? 'bg-neutral-800 text-white border-l-2 border-white' : 'bg-neutral-200 text-black border-l-2 border-black') : '';
+  const highlightClass = highlight ? (isDark ? 'bg-neutral-800 text-white border-l-2 border-indigo-500' : 'bg-neutral-200 text-black border-l-2 border-black') : '';
   
   return (
     <div className={`flex justify-between items-center p-2.5 rounded ${highlightClass}`}>
