@@ -33,6 +33,7 @@ export default function App() {
   // Edit & Bulk State
   const [isEditing, setIsEditing] = useState(false);
   const [editStorage, setEditStorage] = useState('');
+  const [showEditGarageDropdown, setShowEditGarageDropdown] = useState(false);
   const [showMobileDetail, setShowMobileDetail] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkStorage, setBulkStorage] = useState('');
@@ -78,6 +79,15 @@ export default function App() {
     if (session) await supabase.auth.updateUser({ data: { isDarkMode, isGrayscale: newVal } });
   };
 
+  // Helper: Normalize Garage Names to prevent case-sensitive duplicates
+  const uniqueGarages = Array.from(new Set(vehicles.map(v => v.storage).filter(s => s && s !== "Unassigned"))).sort();
+  const normalizeGarageName = (input: string) => {
+    const trimmed = input.trim();
+    if (!trimmed) return "Unassigned";
+    const existing = uniqueGarages.find(g => g.toLowerCase() === trimmed.toLowerCase());
+    return existing || trimmed;
+  };
+
   // 2. DATABASE OPERATIONS
   const fetchUserInventory = async () => {
     const { data, error } = await supabase.from('user_vehicles').select('*');
@@ -120,10 +130,12 @@ export default function App() {
     if (!searchQuery.trim() || !session) return;
     
     const isCustom = !selectedCarMeta;
+    const finalStorage = normalizeGarageName(garageLocation);
+
     const newRow = { 
       user_id: session.user.id, 
       vehicle_id: isCustom ? `custom-${Date.now()}` : selectedCarMeta.id, 
-      storage: garageLocation.trim() || "Unassigned", 
+      storage: finalStorage, 
       name: isCustom ? searchQuery : selectedCarMeta.name, 
       manufacturer: isCustom ? "Custom" : selectedCarMeta.manufacturer 
     };
@@ -138,11 +150,14 @@ export default function App() {
 
   const updateVehicleDetails = async () => {
     if (!selectedVehicle || !session) return;
-    const { error } = await supabase.from('user_vehicles').update({ storage: editStorage || "Unassigned" }).eq('id', selectedVehicle.id);
+    
+    const finalStorage = normalizeGarageName(editStorage);
+
+    const { error } = await supabase.from('user_vehicles').update({ storage: finalStorage }).eq('id', selectedVehicle.id);
     if (!error) {
-      const updatedVehicles = vehicles.map(v => v.id === selectedVehicle.id ? { ...v, storage: editStorage || "Unassigned" } : v);
+      const updatedVehicles = vehicles.map(v => v.id === selectedVehicle.id ? { ...v, storage: finalStorage } : v);
       setVehicles(updatedVehicles);
-      setSelectedVehicle({ ...selectedVehicle, storage: editStorage || "Unassigned" });
+      setSelectedVehicle({ ...selectedVehicle, storage: finalStorage });
       setIsEditing(false);
     } else {
       alert("Error updating: " + error.message);
@@ -181,22 +196,23 @@ export default function App() {
 
   const handleBulkMove = async () => {
     if (!session || selectedIds.size === 0) return;
-    const newStorage = bulkStorage.trim() || "Unassigned";
+    
+    const finalStorage = normalizeGarageName(bulkStorage);
     const idsToUpdate = Array.from(selectedIds);
     
     const { error } = await supabase
       .from('user_vehicles')
-      .update({ storage: newStorage })
+      .update({ storage: finalStorage })
       .in('id', idsToUpdate);
 
     if (!error) {
-      const updatedVehicles = vehicles.map(v => selectedIds.has(v.id) ? { ...v, storage: newStorage } : v);
+      const updatedVehicles = vehicles.map(v => selectedIds.has(v.id) ? { ...v, storage: finalStorage } : v);
       setVehicles(updatedVehicles);
       setSelectedIds(new Set());
       setBulkStorage('');
       setShowBulkStorageInput(false);
       if (selectedVehicle && selectedIds.has(selectedVehicle.id)) {
-        setSelectedVehicle({ ...selectedVehicle, storage: newStorage });
+        setSelectedVehicle({ ...selectedVehicle, storage: finalStorage });
       }
     } else {
       alert("Bulk Update Error: " + error.message);
@@ -290,8 +306,6 @@ export default function App() {
     return nameMatch || mfgMatch;
   }).slice(0, 6);
 
-  const uniqueGarages = Array.from(new Set(vehicles.map(v => v.storage).filter(s => s && s !== "Unassigned"))).sort();
-
   // Select All Helpers
   const isAllListSelected = processedVehicles.length > 0 && processedVehicles.every(v => selectedIds.has(v.id));
   const toggleAllList = () => {
@@ -325,7 +339,7 @@ export default function App() {
 
         json.forEach((item: any) => {
           const targetName = item.name ? item.name.toLowerCase().trim() : '';
-          const targetStorage = item.storage || "Unassigned";
+          const targetStorage = normalizeGarageName(item.storage || "Unassigned");
           
           const matchedCar = ALL_GTA_VEHICLES.find(c => c.name.toLowerCase() === targetName);
           
@@ -447,12 +461,13 @@ export default function App() {
         </div>
       </header>
 
+      {/* Main Grid: items-start allows the right column to be sticky without stretching full height */}
       <main className="flex-1 p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-[1600px] mx-auto w-full animate-in fade-in duration-500 relative items-start">
         
         {/* LEFT COLUMN: DATATABLE & CONTROLS */}
         <div className={`lg:col-span-2 flex flex-col ${cardBg} border-2 ${borderMain} ${shadowMain} relative`}>
           
-          {/* BULK ACTIONS BAR */}
+          {/* BULK ACTIONS BAR (Sticky inside left column) */}
           {selectedIds.size > 0 && (
             <div className={`sticky top-0 w-full z-30 p-3 animate-in slide-in-from-top-2 flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-0 ${bulkBarBg}`}>
               <span className="font-bold text-sm tracking-wide">{selectedIds.size} Selected</span>
@@ -464,8 +479,9 @@ export default function App() {
                       onFocus={() => setShowBulkStorageDropdown(true)} onBlur={() => setTimeout(() => setShowBulkStorageDropdown(false), 200)}
                       className={`px-3 py-1.5 text-black text-sm rounded outline-none w-40 sm:w-48 border-2 ${isDarkMode ? 'border-transparent focus:border-indigo-400' : 'border-transparent focus:border-black'}`} 
                     />
+                    {/* Fixed Bulk Garage Dropdown */}
                     {showBulkStorageDropdown && uniqueGarages.length > 0 && (
-                       <div className={`absolute top-[110%] left-0 w-40 sm:w-48 ${cardBg} border-2 ${borderMain} shadow-lg z-50 max-h-40 overflow-y-auto rounded`}>
+                       <div className={`absolute top-full left-0 w-40 sm:w-48 mt-1 ${cardBg} border-2 ${borderMain} shadow-lg z-50 max-h-40 overflow-y-auto rounded`}>
                          {uniqueGarages.filter(g => g.toLowerCase().includes(bulkStorage.toLowerCase())).map(garage => (
                            <div key={garage} onMouseDown={() => setBulkStorage(garage)} className={`p-2 cursor-pointer text-sm font-medium ${textMain} ${hoverBg}`}>{garage}</div>
                          ))}
@@ -568,11 +584,12 @@ export default function App() {
                     )}
                   </div>
                   
-                  <div className="relative flex flex-col gap-1.5">
+                  <div className="relative flex flex-col gap-1.5 relative">
                     <label className={`text-xs font-bold uppercase tracking-wide ${textMuted}`}>Garage Location (Optional)</label>
                     <input type="text" placeholder="e.g. Eclipse Blvd Garage" value={garageLocation} onChange={(e) => setGarageLocation(e.target.value)} onFocus={() => setShowGarageDropdown(true)} onBlur={() => setTimeout(() => setShowGarageDropdown(false), 200)} className={`w-full ${cardBg} ${textMain} border-2 ${borderMain} p-2.5 text-sm outline-none transition-colors rounded`} />
+                    {/* Fixed Add Form Garage Dropdown */}
                     {showGarageDropdown && uniqueGarages.length > 0 && (
-                       <div className={`absolute top-[68px] left-0 w-full ${cardBg} border-2 ${borderMain} shadow-lg z-40 max-h-40 overflow-y-auto rounded`}>
+                       <div className={`absolute top-full left-0 w-full mt-1 ${cardBg} border-2 ${borderMain} shadow-lg z-50 max-h-40 overflow-y-auto rounded`}>
                          {uniqueGarages.filter(g => g.toLowerCase().includes(garageLocation.toLowerCase())).map(garage => (
                            <div key={garage} onMouseDown={() => setGarageLocation(garage)} className={`p-2.5 ${hoverBg} cursor-pointer text-sm transition-colors`}>{garage}</div>
                          ))}
@@ -684,10 +701,26 @@ export default function App() {
 
               <div className={`flex-1 overflow-y-auto p-4 sm:p-6 ${cardBg}`}>
                 {isEditing ? (
-                  <div className="flex flex-col gap-4 animate-in slide-in-from-top-2">
-                    <label className="flex flex-col gap-1.5">
+                  <div className="flex flex-col gap-4 animate-in slide-in-from-top-2 relative">
+                    <label className="flex flex-col gap-1.5 relative">
                       <span className={`text-xs font-bold uppercase ${textMuted}`}>Update Location</span>
-                      <input type="text" value={editStorage} onChange={(e) => setEditStorage(e.target.value)} placeholder="New Garage Name..." className={`w-full ${baseBg} ${textMain} border-2 ${borderMain} rounded p-2 text-sm outline-none`} />
+                      <input 
+                        type="text" 
+                        value={editStorage} 
+                        onChange={(e) => setEditStorage(e.target.value)} 
+                        onFocus={() => setShowEditGarageDropdown(true)}
+                        onBlur={() => setTimeout(() => setShowEditGarageDropdown(false), 200)}
+                        placeholder="New Garage Name..." 
+                        className={`w-full ${baseBg} ${textMain} border-2 ${borderMain} rounded p-2 text-sm outline-none focus:border-indigo-500 transition-colors`} 
+                      />
+                      {/* Fixed Edit Panel Dropdown */}
+                      {showEditGarageDropdown && uniqueGarages.length > 0 && (
+                         <div className={`absolute top-full left-0 w-full mt-1 ${cardBg} border-2 ${borderMain} shadow-lg z-50 max-h-40 overflow-y-auto rounded`}>
+                           {uniqueGarages.filter(g => g.toLowerCase().includes(editStorage.toLowerCase())).map(garage => (
+                             <div key={garage} onMouseDown={() => setEditStorage(garage)} className={`p-2 cursor-pointer text-sm transition-colors ${hoverBg}`}>{garage}</div>
+                           ))}
+                         </div>
+                      )}
                     </label>
                     <button onClick={updateVehicleDetails} className={`py-2 flex items-center justify-center gap-2 ${buttonPrimary} border-2 rounded text-sm font-bold transition-all`}><Save size={14}/> Save Changes</button>
                   </div>
