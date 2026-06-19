@@ -79,13 +79,24 @@ export default function App() {
     if (session) await supabase.auth.updateUser({ data: { isDarkMode, isGrayscale: newVal } });
   };
 
-  // Helper: Normalize Garage Names to prevent case-sensitive duplicates
+  // Helper: Normalize Garage Names with Smart Auto-Complete
   const uniqueGarages = Array.from(new Set(vehicles.map(v => v.storage).filter(s => s && s !== "Unassigned"))).sort();
   const normalizeGarageName = (input: string) => {
     const trimmed = input.trim();
     if (!trimmed) return "Unassigned";
-    const existing = uniqueGarages.find(g => g.toLowerCase() === trimmed.toLowerCase());
-    return existing || trimmed;
+    
+    const lowerInput = trimmed.toLowerCase();
+    
+    // 1. Exact case-insensitive match
+    const exactMatch = uniqueGarages.find(g => g.toLowerCase() === lowerInput);
+    if (exactMatch) return exactMatch;
+
+    // 2. Smart Prefix match (e.g. typing "auto" automatically becomes "Auto Shop" if it's the only match)
+    const prefixMatches = uniqueGarages.filter(g => g.toLowerCase().startsWith(lowerInput));
+    if (prefixMatches.length === 1) return prefixMatches[0];
+
+    // 3. Fallback to exactly what the user typed (creates new garage)
+    return trimmed;
   };
 
   // 2. DATABASE OPERATIONS
@@ -461,17 +472,16 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Grid: items-start allows the right column to be sticky without stretching full height */}
       <main className="flex-1 p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-[1600px] mx-auto w-full animate-in fade-in duration-500 relative items-start">
         
         {/* LEFT COLUMN: DATATABLE & CONTROLS */}
         <div className={`lg:col-span-2 flex flex-col ${cardBg} border-2 ${borderMain} ${shadowMain} relative`}>
           
-          {/* BULK ACTIONS BAR (Sticky inside left column) */}
+          {/* BULK ACTIONS BAR */}
           {selectedIds.size > 0 && (
             <div className={`sticky top-0 w-full z-30 p-3 animate-in slide-in-from-top-2 flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-0 ${bulkBarBg}`}>
               <span className="font-bold text-sm tracking-wide">{selectedIds.size} Selected</span>
-              <div className="flex gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+              <div className="flex flex-wrap gap-2 w-full sm:w-auto pb-1 sm:pb-0 justify-center">
                 {showBulkStorageInput ? (
                   <div className="flex gap-2 relative">
                     <input 
@@ -479,11 +489,10 @@ export default function App() {
                       onFocus={() => setShowBulkStorageDropdown(true)} onBlur={() => setTimeout(() => setShowBulkStorageDropdown(false), 200)}
                       className={`px-3 py-1.5 text-black text-sm rounded outline-none w-40 sm:w-48 border-2 ${isDarkMode ? 'border-transparent focus:border-indigo-400' : 'border-transparent focus:border-black'}`} 
                     />
-                    {/* Fixed Bulk Garage Dropdown */}
                     {showBulkStorageDropdown && uniqueGarages.length > 0 && (
-                       <div className={`absolute top-full left-0 w-40 sm:w-48 mt-1 ${cardBg} border-2 ${borderMain} shadow-lg z-50 max-h-40 overflow-y-auto rounded`}>
+                       <div className={`absolute top-[calc(100%+4px)] left-0 w-48 sm:w-56 ${cardBg} border-2 ${borderMain} shadow-xl z-[100] max-h-48 overflow-y-auto rounded`}>
                          {uniqueGarages.filter(g => g.toLowerCase().includes(bulkStorage.toLowerCase())).map(garage => (
-                           <div key={garage} onMouseDown={() => setBulkStorage(garage)} className={`p-2 cursor-pointer text-sm font-medium ${textMain} ${hoverBg}`}>{garage}</div>
+                           <div key={garage} onMouseDown={() => setBulkStorage(garage)} className={`p-2.5 cursor-pointer text-sm font-medium ${textMain} ${hoverBg}`}>{garage}</div>
                          ))}
                        </div>
                     )}
@@ -561,7 +570,7 @@ export default function App() {
             )}
           </div>
 
-          <div className="flex-1 overflow-x-auto p-0 relative">
+          <div className="flex-1 overflow-x-auto p-0 relative z-10">
 
             {showAddForm && (
               <form onSubmit={saveVehicleToInventory} className={`absolute inset-0 z-20 ${baseBg} p-4 sm:p-6 border-b-2 ${borderMain} animate-in slide-in-from-top-4 duration-300 overflow-y-auto`}>
@@ -584,12 +593,11 @@ export default function App() {
                     )}
                   </div>
                   
-                  <div className="relative flex flex-col gap-1.5 relative">
+                  <div className="relative flex flex-col gap-1.5">
                     <label className={`text-xs font-bold uppercase tracking-wide ${textMuted}`}>Garage Location (Optional)</label>
                     <input type="text" placeholder="e.g. Eclipse Blvd Garage" value={garageLocation} onChange={(e) => setGarageLocation(e.target.value)} onFocus={() => setShowGarageDropdown(true)} onBlur={() => setTimeout(() => setShowGarageDropdown(false), 200)} className={`w-full ${cardBg} ${textMain} border-2 ${borderMain} p-2.5 text-sm outline-none transition-colors rounded`} />
-                    {/* Fixed Add Form Garage Dropdown */}
                     {showGarageDropdown && uniqueGarages.length > 0 && (
-                       <div className={`absolute top-full left-0 w-full mt-1 ${cardBg} border-2 ${borderMain} shadow-lg z-50 max-h-40 overflow-y-auto rounded`}>
+                       <div className={`absolute top-[calc(100%+4px)] left-0 w-full ${cardBg} border-2 ${borderMain} shadow-xl z-[100] max-h-48 overflow-y-auto rounded`}>
                          {uniqueGarages.filter(g => g.toLowerCase().includes(garageLocation.toLowerCase())).map(garage => (
                            <div key={garage} onMouseDown={() => setGarageLocation(garage)} className={`p-2.5 ${hoverBg} cursor-pointer text-sm transition-colors`}>{garage}</div>
                          ))}
@@ -713,11 +721,11 @@ export default function App() {
                         placeholder="New Garage Name..." 
                         className={`w-full ${baseBg} ${textMain} border-2 ${borderMain} rounded p-2 text-sm outline-none focus:border-indigo-500 transition-colors`} 
                       />
-                      {/* Fixed Edit Panel Dropdown */}
+                      {/* Fixed Edit Field Garage Dropdown */}
                       {showEditGarageDropdown && uniqueGarages.length > 0 && (
-                         <div className={`absolute top-full left-0 w-full mt-1 ${cardBg} border-2 ${borderMain} shadow-lg z-50 max-h-40 overflow-y-auto rounded`}>
+                         <div className={`absolute top-[calc(100%+4px)] left-0 w-full ${cardBg} border-2 ${borderMain} shadow-xl z-[100] max-h-48 overflow-y-auto rounded`}>
                            {uniqueGarages.filter(g => g.toLowerCase().includes(editStorage.toLowerCase())).map(garage => (
-                             <div key={garage} onMouseDown={() => setEditStorage(garage)} className={`p-2 cursor-pointer text-sm transition-colors ${hoverBg}`}>{garage}</div>
+                             <div key={garage} onMouseDown={() => setEditStorage(garage)} className={`p-2.5 cursor-pointer text-sm font-medium ${textMain} ${hoverBg}`}>{garage}</div>
                            ))}
                          </div>
                       )}
