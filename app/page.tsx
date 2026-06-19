@@ -562,7 +562,7 @@ export default function App() {
             ) : (
               /* GARAGE GROUPED VIEW */
               <div className="p-4 flex flex-col gap-6 bg-[#f4f4f0] dark:bg-neutral-950 min-h-full mt-10 sm:mt-0">
-                {Object.keys(groupedVehicles).length > 0 ? Object.entries(groupedVehicles).sort(([a], [b]) => a.localeCompare(b)).map(([garage, cars]) => (
+                {Object.keys(groupedVehicles).length > 0 ? Object.entries(groupedVehicles).sort(([a], [b]) => a.localeCompare(b)).map(([garage, cars]: [string, any[]]) => (
                   <div key={garage} className={`${cardBg} border-2 ${borderMain} ${shadowSmall} rounded overflow-hidden`}>
                     <div className={`px-4 py-3 border-b-2 ${borderMain} ${isDarkMode ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-black'} font-black uppercase text-sm tracking-wide flex justify-between items-center`}>
                       <span className="flex items-center gap-2"><Building2 size={16}/> {garage}</span>
