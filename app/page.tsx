@@ -344,7 +344,7 @@ export default function App() {
     setCopiedGeminiPrompt(true); setTimeout(() => setCopiedGeminiPrompt(false), 2000);
   };
 
-  // UI Theme Variables (Spicy Dark Mode adjustments)
+  // UI Theme Variables
   const baseBg = isDarkMode ? "bg-neutral-950" : "bg-[#f4f4f0]";
   const cardBg = isDarkMode ? "bg-neutral-900" : "bg-white";
   const textMain = isDarkMode ? "text-neutral-100" : "text-black";
@@ -568,17 +568,21 @@ export default function App() {
             ) : (
               /* GARAGE GROUPED VIEW */
               <div className="p-4 flex flex-col gap-6 bg-[#f4f4f0] dark:bg-neutral-950 min-h-full">
-                {Object.keys(groupedVehicles).length > 0 ? Object.entries(groupedVehicles).sort(([a], [b]) => a.localeCompare(b)).map(([garage, cars]: [string, any[]]) => (
-                  <div key={garage} className={`${cardBg} border-2 ${borderMain} ${shadowSmall} rounded overflow-hidden`}>
-                    <div className={`px-4 py-3 border-b-2 ${borderMain} ${isDarkMode ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-black'} font-black uppercase text-sm tracking-wide flex justify-between items-center`}>
-                      <span className="flex items-center gap-2"><Building2 size={16}/> {garage}</span>
-                      <span className="bg-black text-white dark:bg-white dark:text-black px-2 py-0.5 rounded text-xs">{cars.length}</span>
+                {Object.keys(groupedVehicles).length > 0 ? Object.entries(groupedVehicles).sort(([a], [b]) => a.localeCompare(b)).map((entry) => {
+                  const garage = entry[0];
+                  const cars = entry[1] as any[];
+                  return (
+                    <div key={garage} className={`${cardBg} border-2 ${borderMain} ${shadowSmall} rounded overflow-hidden`}>
+                      <div className={`px-4 py-3 border-b-2 ${borderMain} ${isDarkMode ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-black'} font-black uppercase text-sm tracking-wide flex justify-between items-center`}>
+                        <span className="flex items-center gap-2"><Building2 size={16}/> {garage}</span>
+                        <span className="bg-black text-white dark:bg-white dark:text-black px-2 py-0.5 rounded text-xs">{cars.length}</span>
+                      </div>
+                      <div className={`divide-y-2 ${isDarkMode ? 'divide-neutral-800' : 'divide-neutral-100'} min-w-[600px]`}>
+                         {cars.map(v => <VehicleRow key={v.id} v={v} isSelected={selectedVehicle?.id === v.id} />)}
+                      </div>
                     </div>
-                    <div className={`divide-y-2 ${isDarkMode ? 'divide-neutral-800' : 'divide-neutral-100'} min-w-[600px]`}>
-                       {cars.map(v => <VehicleRow key={v.id} v={v} isSelected={selectedVehicle?.id === v.id} />)}
-                    </div>
-                  </div>
-                )) : (
+                  );
+                }) : (
                   <div className="p-8 text-center text-sm font-bold uppercase tracking-widest opacity-50 w-full col-span-full">No vehicles match current filters.</div>
                 )}
               </div>
