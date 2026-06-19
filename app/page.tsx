@@ -169,7 +169,7 @@ export default function App() {
 
   // Bulk Operations
   const toggleSelection = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation(); // Prevent opening detail view
+    e.stopPropagation(); 
     setSelectedIds(prev => {
       const newSet = new Set(prev);
       if (newSet.has(id)) newSet.delete(id);
@@ -182,7 +182,6 @@ export default function App() {
     if (!session || selectedIds.size === 0) return;
     const newStorage = bulkStorage.trim() || "Unassigned";
     
-    // Convert Set to Array for Supabase 'in' query
     const idsToUpdate = Array.from(selectedIds);
     
     const { error } = await supabase
@@ -206,7 +205,7 @@ export default function App() {
 
   const resetAddForm = () => { setShowAddForm(false); setSearchQuery(''); setSelectedCarMeta(null); setGarageLocation(''); setShowGarageDropdown(false); };
 
-  // 3. FLEET DATA PROCESSING (Fuzzy Search, Filtering, Sorting)
+  // 3. FLEET DATA PROCESSING
   const fuzzyMatch = (pattern: string, str: string) => {
     if (!pattern) return true;
     if (!str) return false;
@@ -273,7 +272,7 @@ export default function App() {
 
   const uniqueGarages = Array.from(new Set(vehicles.map(v => v.storage).filter(s => s && s !== "Unassigned"))).sort();
 
-  // 4. IMPORT / EXPORT (With Smart Duplicate Handling)
+  // 4. IMPORT / EXPORT 
   const handleExport = () => {
     const exportPayload = vehicles.map(v => ({ name: v.name, storage: v.storage }));
     const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
@@ -302,7 +301,6 @@ export default function App() {
           const matchedCar = ALL_GTA_VEHICLES.find(c => c.name.toLowerCase() === targetName);
           
           if (matchedCar) {
-            // Smart Duplicate Check: Is this exact car already in this exact garage?
             const isDuplicate = vehicles.some(v => 
               v.vehicle_id === matchedCar.id && 
               (v.storage === targetStorage || (!v.storage && targetStorage === "Unassigned"))
@@ -325,7 +323,6 @@ export default function App() {
         }
         setShowImportModal(false);
         
-        // Detailed feedback string
         let feedback = `${validRows.length} cars imported successfully.\n`;
         if (duplicatesSkipped > 0) feedback += `${duplicatesSkipped} exact duplicates skipped.\n`;
         if (failedNames.length > 0) feedback += `${failedNames.length} imports failed (Not in DB): ${failedNames.join(', ')}`;
@@ -562,17 +559,21 @@ export default function App() {
             ) : (
               /* GARAGE GROUPED VIEW */
               <div className="p-4 flex flex-col gap-6 bg-[#f4f4f0] dark:bg-neutral-950 min-h-full mt-10 sm:mt-0">
-                {Object.keys(groupedVehicles).length > 0 ? Object.entries(groupedVehicles).sort(([a], [b]) => a.localeCompare(b)).map(([garage, cars]: [string, any[]]) => (
-                  <div key={garage} className={`${cardBg} border-2 ${borderMain} ${shadowSmall} rounded overflow-hidden`}>
-                    <div className={`px-4 py-3 border-b-2 ${borderMain} ${isDarkMode ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-black'} font-black uppercase text-sm tracking-wide flex justify-between items-center`}>
-                      <span className="flex items-center gap-2"><Building2 size={16}/> {garage}</span>
-                      <span className="bg-black text-white dark:bg-white dark:text-black px-2 py-0.5 rounded text-xs">{cars.length}</span>
+                {Object.keys(groupedVehicles).length > 0 ? Object.entries(groupedVehicles).sort(([a], [b]) => a.localeCompare(b)).map((entry) => {
+                  const garage = entry[0];
+                  const cars = entry[1] as any[];
+                  return (
+                    <div key={garage} className={`${cardBg} border-2 ${borderMain} ${shadowSmall} rounded overflow-hidden`}>
+                      <div className={`px-4 py-3 border-b-2 ${borderMain} ${isDarkMode ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-black'} font-black uppercase text-sm tracking-wide flex justify-between items-center`}>
+                        <span className="flex items-center gap-2"><Building2 size={16}/> {garage}</span>
+                        <span className="bg-black text-white dark:bg-white dark:text-black px-2 py-0.5 rounded text-xs">{cars.length}</span>
+                      </div>
+                      <div className={`divide-y-2 ${isDarkMode ? 'divide-neutral-800' : 'divide-neutral-100'} min-w-[600px]`}>
+                         {cars.map(v => <VehicleRow key={v.id} v={v} isSelected={selectedVehicle?.id === v.id} />)}
+                      </div>
                     </div>
-                    <div className={`divide-y-2 ${isDarkMode ? 'divide-neutral-800' : 'divide-neutral-100'} min-w-[600px]`}>
-                       {cars.map(v => <VehicleRow key={v.id} v={v} isSelected={selectedVehicle?.id === v.id} />)}
-                    </div>
-                  </div>
-                )) : (
+                  );
+                }) : (
                   <div className="p-8 text-center text-sm font-bold uppercase tracking-widest opacity-50 w-full col-span-full">No vehicles match current filters.</div>
                 )}
               </div>
