@@ -37,6 +37,7 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkStorage, setBulkStorage] = useState('');
   const [showBulkStorageInput, setShowBulkStorageInput] = useState(false);
+  const [showBulkStorageDropdown, setShowBulkStorageDropdown] = useState(false);
 
   // Import/Export States
   const [showImportModal, setShowImportModal] = useState(false);
@@ -181,7 +182,6 @@ export default function App() {
   const handleBulkMove = async () => {
     if (!session || selectedIds.size === 0) return;
     const newStorage = bulkStorage.trim() || "Unassigned";
-    
     const idsToUpdate = Array.from(selectedIds);
     
     const { error } = await supabase
@@ -200,6 +200,26 @@ export default function App() {
       }
     } else {
       alert("Bulk Update Error: " + error.message);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!session || selectedIds.size === 0) return;
+    if (!confirm(`WARNING: Are you sure you want to delete ${selectedIds.size} vehicles? This is permanent.`)) return;
+    
+    const idsToDelete = Array.from(selectedIds);
+    const { error } = await supabase.from('user_vehicles').delete().in('id', idsToDelete);
+    
+    if (!error) {
+      setVehicles(vehicles.filter(v => !selectedIds.has(v.id)));
+      setSelectedIds(new Set());
+      setShowBulkStorageInput(false);
+      if (selectedVehicle && selectedIds.has(selectedVehicle.id)) {
+        setSelectedVehicle(null);
+        setShowMobileDetail(false);
+      }
+    } else {
+      alert("Bulk Delete Error: " + error.message);
     }
   };
 
@@ -271,6 +291,15 @@ export default function App() {
   }).slice(0, 6);
 
   const uniqueGarages = Array.from(new Set(vehicles.map(v => v.storage).filter(s => s && s !== "Unassigned"))).sort();
+
+  // Select All Helpers
+  const isAllListSelected = processedVehicles.length > 0 && processedVehicles.every(v => selectedIds.has(v.id));
+  const toggleAllList = () => {
+    const newSet = new Set(selectedIds);
+    if (isAllListSelected) processedVehicles.forEach(v => newSet.delete(v.id));
+    else processedVehicles.forEach(v => newSet.add(v.id));
+    setSelectedIds(newSet);
+  };
 
   // 4. IMPORT / EXPORT 
   const handleExport = () => {
@@ -354,7 +383,6 @@ export default function App() {
   const shadowMain = isDarkMode ? "shadow-[6px_6px_0_0_#000000]" : "shadow-[6px_6px_0_0_#000000]";
   const shadowSmall = isDarkMode ? "shadow-[3px_3px_0_0_#000000]" : "shadow-[3px_3px_0_0_#000000]";
   
-  // Indigo Accent for Dark Mode
   const buttonPrimary = isDarkMode ? "bg-indigo-600 text-white hover:bg-indigo-500 border-indigo-600 hover:border-indigo-500" : "bg-black text-white hover:bg-neutral-800 border-black";
   const buttonSecondary = isDarkMode ? "bg-neutral-800 text-white hover:bg-neutral-700" : "bg-white text-black hover:bg-neutral-100";
   const selectedRowBg = isDarkMode ? "bg-neutral-800 shadow-[inset_4px_0_0_0_#4f46e5]" : "bg-neutral-100 shadow-[inset_4px_0_0_0_#000000]";
@@ -367,7 +395,7 @@ export default function App() {
       <div onClick={() => { setSelectedVehicle(v); setIsEditing(false); setShowMobileDetail(true); }} className={`group grid grid-cols-[auto_1fr_1fr] sm:grid-cols-[auto_2fr_2fr_1fr_1fr_1fr] gap-3 sm:gap-4 p-3.5 cursor-pointer items-center transition-all ${isSelected ? selectedRowBg : hoverBg}`}>
         <button 
           onClick={(e) => toggleSelection(e, v.id)} 
-          className={`transition-all duration-200 transform hover:scale-110 active:scale-90 ${isChecked ? (isDarkMode ? 'text-indigo-400 opacity-100' : 'text-black opacity-100') : 'text-neutral-400 opacity-0 group-hover:opacity-100 hover:text-neutral-300'}`}
+          className={`transition-all duration-200 transform hover:scale-110 active:scale-90 ${isChecked ? (isDarkMode ? 'text-indigo-400 opacity-100' : 'text-black opacity-100') : 'text-neutral-400 opacity-0 group-hover:opacity-100 hover:text-neutral-500'}`}
         >
           {isChecked ? <CheckSquare size={18} className="fill-current text-current" /> : <Square size={18} />}
         </button>
@@ -419,27 +447,40 @@ export default function App() {
         </div>
       </header>
 
-      {/* Adding items-start to allow the right side to be sticky without stretching */}
       <main className="flex-1 p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-[1600px] mx-auto w-full animate-in fade-in duration-500 relative items-start">
         
         {/* LEFT COLUMN: DATATABLE & CONTROLS */}
         <div className={`lg:col-span-2 flex flex-col ${cardBg} border-2 ${borderMain} ${shadowMain} relative`}>
           
-          {/* BULK ACTIONS BAR (Sticky inside left column) */}
+          {/* BULK ACTIONS BAR */}
           {selectedIds.size > 0 && (
-            <div className={`sticky top-0 w-full z-30 p-3 animate-in slide-in-from-top-2 flex justify-between items-center ${bulkBarBg}`}>
-              <span className="font-bold text-sm">{selectedIds.size} Selected</span>
-              <div className="flex gap-2">
+            <div className={`sticky top-0 w-full z-30 p-3 animate-in slide-in-from-top-2 flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-0 ${bulkBarBg}`}>
+              <span className="font-bold text-sm tracking-wide">{selectedIds.size} Selected</span>
+              <div className="flex gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
                 {showBulkStorageInput ? (
-                  <div className="flex gap-2">
-                    <input type="text" placeholder="New Garage..." value={bulkStorage} onChange={(e) => setBulkStorage(e.target.value)} className="px-2 py-1 text-black text-sm rounded outline-none w-32 sm:w-auto" />
-                    <button onClick={handleBulkMove} className="px-3 py-1 bg-white text-black font-bold text-xs uppercase rounded hover:bg-neutral-200">Move</button>
-                    <button onClick={() => setShowBulkStorageInput(false)} className="px-2 py-1 hover:opacity-70"><X size={16}/></button>
+                  <div className="flex gap-2 relative">
+                    <input 
+                      type="text" placeholder="Garage name..." value={bulkStorage} onChange={(e) => setBulkStorage(e.target.value)} 
+                      onFocus={() => setShowBulkStorageDropdown(true)} onBlur={() => setTimeout(() => setShowBulkStorageDropdown(false), 200)}
+                      className={`px-3 py-1.5 text-black text-sm rounded outline-none w-40 sm:w-48 border-2 ${isDarkMode ? 'border-transparent focus:border-indigo-400' : 'border-transparent focus:border-black'}`} 
+                    />
+                    {showBulkStorageDropdown && uniqueGarages.length > 0 && (
+                       <div className={`absolute top-[110%] left-0 w-40 sm:w-48 ${cardBg} border-2 ${borderMain} shadow-lg z-50 max-h-40 overflow-y-auto rounded`}>
+                         {uniqueGarages.filter(g => g.toLowerCase().includes(bulkStorage.toLowerCase())).map(garage => (
+                           <div key={garage} onMouseDown={() => setBulkStorage(garage)} className={`p-2 cursor-pointer text-sm font-medium ${textMain} ${hoverBg}`}>{garage}</div>
+                         ))}
+                       </div>
+                    )}
+                    <button onClick={handleBulkMove} className="px-3 py-1.5 bg-white text-black font-bold text-xs uppercase rounded hover:bg-neutral-200 transition-colors">Confirm</button>
+                    <button onClick={() => setShowBulkStorageInput(false)} className="px-2 py-1.5 hover:bg-black/20 rounded transition-colors"><X size={16}/></button>
                   </div>
                 ) : (
                   <>
-                    <button onClick={() => setShowBulkStorageInput(true)} className="px-3 py-1.5 bg-white/20 hover:bg-white/30 font-bold text-xs uppercase rounded transition-colors flex items-center gap-1.5"><Building2 size={14}/> Move Selected</button>
-                    <button onClick={() => setSelectedIds(new Set())} className="px-3 py-1.5 hover:bg-white/20 font-bold text-xs uppercase rounded transition-colors">Deselect</button>
+                    <button onClick={() => setShowBulkStorageInput(true)} className="px-3 py-1.5 bg-white/20 hover:bg-white/30 font-bold text-xs uppercase rounded transition-colors flex items-center gap-1.5"><Building2 size={14}/> Move</button>
+                    <button onClick={handleBulkDelete} className="px-3 py-1.5 bg-red-500/90 hover:bg-red-600 font-bold text-xs uppercase rounded transition-colors flex items-center gap-1.5 text-white shadow-sm"><Trash2 size={14}/> Delete</button>
+                    <div className="w-px h-6 bg-white/30 mx-1 hidden sm:block"></div>
+                    <button onClick={() => setSelectedIds(new Set())} className="px-3 py-1.5 hover:bg-white/20 font-bold text-xs uppercase rounded transition-colors hidden sm:block">Deselect</button>
+                    <button onClick={() => setSelectedIds(new Set())} className="px-2 py-1.5 hover:bg-white/20 rounded transition-colors sm:hidden"><X size={16}/></button>
                   </>
                 )}
               </div>
@@ -548,9 +589,11 @@ export default function App() {
 
             {viewMode === 'list' ? (
               /* LIST VIEW */
-              <div className="w-full text-left min-w-[600px]">
+              <div className="w-full text-left min-w-[600px] mt-10 sm:mt-0">
                 <div className={`grid grid-cols-[auto_1fr_1fr] sm:grid-cols-[auto_2fr_2fr_1fr_1fr_1fr] gap-3 sm:gap-4 p-3.5 border-b-2 ${borderMain} font-bold text-xs uppercase tracking-wide ${baseBg} select-none ${textMuted} sticky top-0 z-10`}>
-                  <div className="w-4"></div>
+                  <button onClick={toggleAllList} className={`transition-all transform hover:scale-110 active:scale-90 ${isAllListSelected ? (isDarkMode ? 'text-indigo-400' : 'text-black') : 'hover:text-black dark:hover:text-white'}`}>
+                    {isAllListSelected ? <CheckSquare size={18}/> : <Square size={18}/>}
+                  </button>
                   <span className={`cursor-pointer ${hoverBg} transition-colors flex items-center gap-1`} onClick={() => requestSort('name')}>Vehicle {sortConfig?.key === 'name' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</span>
                   <span className={`cursor-pointer ${hoverBg} transition-colors flex items-center gap-1`} onClick={() => requestSort('storage')}>Location {sortConfig?.key === 'storage' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</span>
                   <span className={`cursor-pointer ${hoverBg} transition-colors flex items-center gap-1 hidden sm:flex`} onClick={() => requestSort('class')}>Class {sortConfig?.key === 'class' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</span>
@@ -567,14 +610,28 @@ export default function App() {
               </div>
             ) : (
               /* GARAGE GROUPED VIEW */
-              <div className="p-4 flex flex-col gap-6 bg-[#f4f4f0] dark:bg-neutral-950 min-h-full">
+              <div className="p-4 flex flex-col gap-6 bg-[#f4f4f0] dark:bg-neutral-950 min-h-full mt-10 sm:mt-0">
                 {Object.keys(groupedVehicles).length > 0 ? Object.entries(groupedVehicles).sort(([a], [b]) => a.localeCompare(b)).map((entry) => {
                   const garage = entry[0];
                   const cars = entry[1] as any[];
+                  const isAllGarageSelected = cars.length > 0 && cars.every(v => selectedIds.has(v.id));
+                  
+                  const toggleAllGarage = () => {
+                    const newSet = new Set(selectedIds);
+                    if (isAllGarageSelected) cars.forEach(v => newSet.delete(v.id));
+                    else cars.forEach(v => newSet.add(v.id));
+                    setSelectedIds(newSet);
+                  };
+
                   return (
                     <div key={garage} className={`${cardBg} border-2 ${borderMain} ${shadowSmall} rounded overflow-hidden`}>
                       <div className={`px-4 py-3 border-b-2 ${borderMain} ${isDarkMode ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-black'} font-black uppercase text-sm tracking-wide flex justify-between items-center`}>
-                        <span className="flex items-center gap-2"><Building2 size={16}/> {garage}</span>
+                        <div className="flex items-center gap-3">
+                           <button onClick={toggleAllGarage} className={`transition-all transform hover:scale-110 active:scale-90 ${isAllGarageSelected ? (isDarkMode ? 'text-indigo-400' : 'text-black') : 'text-neutral-400 hover:text-black dark:hover:text-white'}`}>
+                             {isAllGarageSelected ? <CheckSquare size={18}/> : <Square size={18}/>}
+                           </button>
+                           <span className="flex items-center gap-2"><Building2 size={16}/> {garage}</span>
+                        </div>
                         <span className="bg-black text-white dark:bg-white dark:text-black px-2 py-0.5 rounded text-xs">{cars.length}</span>
                       </div>
                       <div className={`divide-y-2 ${isDarkMode ? 'divide-neutral-800' : 'divide-neutral-100'} min-w-[600px]`}>
